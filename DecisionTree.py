@@ -18,30 +18,40 @@ class DecisionTree(object):
         Returns
         -------
         tree: a tree node stored in dictionary.
+        	  key: the key of the dictionary is name of the classifier.
+        	  value: a list. the element of the list are lists of length 3.
+        	  	  List[0]: value of the classifier.
+        	  	  List[1]: decision if the tree has no subtrees.
+        	  	  List[2]: subtrees.
         """
 		attributes = list(X.columns.values)
 		label = list(Y.columns.values)[0]
 		data = pd.concat([X, Y], axis=1)
 
-		if len(attributes) == 0: 
-			return data[label].value_counts().keys()[0]
-
-		attribute, decision = self.getBestAttribute(data, label, attributes)
-		if not attribute: 
-			return decision
+		attribute, decisions = self.getBestAttribute(data, label, attributes)
+		# No information gain. Done classifying.
+		if not attribute:
+			return 
 
 		attributes.remove(attribute)
 		dataGroups = data.groupby(attribute)
-		tree, leaves = {}, {}
+		tree, branches = {}, []
+
 		for key in dataGroups.groups.keys():
-			leaves[key] = {}
-		tree[attribute] = leaves
+			branch = [key, decisions[key], None]
+			branches.append(branch)
+		tree[attribute] = branches
 
 		for group in dataGroups.groups:
 			subData = dataGroups.get_group(group)
 			X = subData.drop([label, attribute], axis=1)
 			Y = pd.DataFrame(subData[label])
-			tree[attribute][group] = self.makeTree(X, Y)
+
+			# Find which branch the current subtree belongs to
+			for i in xrange(len(tree[attribute])):
+				if tree[attribute][i][0] == group:
+					tree[attribute][i][2] = self.makeTree(X, Y)
+					break
 		return tree
 
 	def computeEntropy(self, data, label):
@@ -85,10 +95,12 @@ class DecisionTree(object):
         decision: The most frequent label value in current dataset.
         """
 		entropy = self.computeEntropy(data, label)
-		maxGain, bestAttr, decision = 0, None, None
+		# Intialize the default values. The default decision is the most frequent label value
+		maxGain, bestAttr, decisions = 0, None, [data[label].value_counts().keys()[0]]
 
 		# Compute entropy gain for each attribute
 		for attribute in attributes:
+			tempdecisions = {}
 			dataGroups = data.groupby(attribute)
 			total = float(len(data))
 			subentropy = 0
@@ -97,11 +109,13 @@ class DecisionTree(object):
 				subData = dataGroups.get_group(group)
 				freq = len(dataGroups.get_group(group))
 				subentropy += freq / total * self.computeEntropy(subData, label)
+				decision = subData[label].value_counts().keys()[0]
+				tempdecisions[group] = decision
 
 			gain = entropy - subentropy
 			if gain > maxGain:
 				bestAttr = attribute
 				maxGain = gain
+				decisions = tempdecisions
 
-		decision = data[label].value_counts().keys()[0]
-		return bestAttr, decision
+		return bestAttr, decisions
