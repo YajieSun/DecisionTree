@@ -19,7 +19,7 @@ class DecisionTree(object):
         Returns
         -------
         tree: a tree node stored in dictionary.
-              key: the key of the dictionary is name of the classifier.
+              key: a tuple contains (name of the classifier, decision if no subtrees)
               value: a list. the element of the list are lists of length 3.
                   List[0]: value of the classifier.
                   List[1]: decision if the tree has no subtrees.
@@ -29,7 +29,7 @@ class DecisionTree(object):
         label = list(Y.columns.values)[0]
         data = pd.concat([X, Y], axis=1)
 
-        attribute, decisions = self.getBestAttribute(data, label, attributes)
+        attribute, defaultDecision, decisions = self.getBestAttribute(data, label, attributes)
         # No information gain. Done classifying.
         if not attribute:
             return 
@@ -41,7 +41,7 @@ class DecisionTree(object):
         for key in dataGroups.groups.keys():
             branch = [key, decisions[key], None]
             branches.append(branch)
-        tree[attribute] = branches
+        tree[(attribute, defaultDecision)] = branches
 
         for group in dataGroups.groups:
             subData = dataGroups.get_group(group)
@@ -49,9 +49,9 @@ class DecisionTree(object):
             Y = pd.DataFrame(subData[label])
 
             # Find which branch the current subtree belongs to
-            for i in xrange(len(tree[attribute])):
-                if tree[attribute][i][0] == group:
-                    tree[attribute][i][2] = self.makeTree(X, Y)
+            for i in xrange(len(tree[(attribute, defaultDecision)])):
+                if tree[(attribute, defaultDecision)][i][0] == group:
+                    tree[(attribute, defaultDecision)][i][2] = self.makeTree(X, Y)
                     break
         return tree
 
@@ -95,13 +95,15 @@ class DecisionTree(object):
         Returns
         -------
         bestAttr: attribute name that maximize entropy gain or None
-        decision: The most frequent label value in current dataset.
+        defaultDecision: The decision chosen if bestAttr is None.
+        decisions: The most frequent label value in current dataset group by bestAttr values.
         """
         entropy = self.computeEntropy(data, label)
         # Intialize the default values. The default decision is the most frequent label value
-        maxGain, bestAttr, decisions = 0, None, [data[label].value_counts().keys()[0]]
+        defaultDecision = data[label].value_counts().keys()[0]
+        maxGain, bestAttr, decisions = 0, None, defaultDecision
 
-        # Compute entropy gain for each attribute
+        # Compute entropy gain for each attribute 
         for attribute in attributes:
             tempdecisions = {}
             dataGroups = data.groupby(attribute)
@@ -121,4 +123,54 @@ class DecisionTree(object):
                 maxGain = gain
                 decisions = tempdecisions
 
-        return bestAttr, decisions
+        return bestAttr, defaultDecision, decisions
+
+    def fit(self, tree, data):
+        """
+        Pred the data with the decision tree.
+
+        Parameters
+        ----------
+        data : matrix, shape = [n_samples, n_features]
+
+        tree: decsion tree
+
+        Returns
+        -------
+        decisions: list. Prediction results. shape = [n_samples]
+        """
+        nrow, _ = data.shape
+        res = []
+
+        for i in xrange(nrow):
+            d = data[i: i + 1]
+            pred = self.__fit(tree, d)
+            res.append(pred)
+        return res
+
+    def __fit(self, tree, data):
+        """
+        Pred the data with the decision tree.
+
+        Parameters
+        ----------
+        data : array-like, shape = [n_samples]
+
+        tree: decsion tree
+
+        Returns
+        -------
+        decisions: type of the attribute of interest. Prediction results. shape = [n_samples]
+        """
+        key, decision = tree.keys()[0]
+        values = tree.values()[0]
+        prop = list(data[key])[0]
+        
+        for val in values:
+            if val[0] == prop:
+                subtree = val[2]
+                if not subtree:
+                    return val[1]
+                else:
+                    return self.__fit(subtree, data)
+        return decision
