@@ -146,7 +146,7 @@ class DecisionTree(object):
             d = data[i: i + 1]
             pred = self.__fit(tree, d)
             res.append(pred)
-        return res
+        return pd.Series(res)
 
     def __fit(self, tree, data):
         """
